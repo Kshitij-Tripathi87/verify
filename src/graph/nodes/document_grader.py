@@ -63,7 +63,7 @@ def document_grader_node(state: GraphState) -> dict:
     relevant_docs: List[DocumentChunk] = []
 
     try:
-        llm = get_llm(temperature=0.0)
+        llm = get_llm(temperature=0.0, with_failover=False)
         structured_grader = llm.with_structured_output(BatchGraderOutput)
         grader_chain = BATCH_GRADER_PROMPT | structured_grader
 
