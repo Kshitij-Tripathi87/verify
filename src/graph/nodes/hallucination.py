@@ -1,102 +1,164 @@
+import re
 from typing import Literal
+
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
+
 from src.graph.state import GraphState
-from src.core.llm import get_llm
+
 
 class HallucinationGrade(BaseModel):
     binary_score: Literal["grounded", "not grounded"] = Field(
-        description="Score whether the answer is strictly grounded in and supported by the provided facts."
+        description="Whether every material factual claim and code assertion is supported by the supplied evidence."
     )
     explanation: str = Field(
-        description="Brief explanation of the grounding check."
+        description="Brief explanation identifying unsupported claims or the evidence that supports the answer."
     )
+
 
 HALLUCINATION_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
-        """You are a strict QA evaluator assessing whether an LLM generation is grounded in retrieved facts (Self-RAG Groundedness Check).
-Evaluate whether the student's answer is factually supported by the retrieved documents context.
-- Grade 'grounded' if the claims and code in the answer are supported by or reasonably inferred from the context.
-- Grade 'not grounded' if the answer introduces hallucinations, claims contradictions, or invents facts not found in the context."""
+        """You are a strict evidence auditor for a technical documentation assistant.
+Your job is to determine whether the generated answer is supported by the supplied retrieved documents.
+
+Rules:
+- Check every material factual claim, API name, parameter, version statement, and code behavior.
+- A citation being present is NOT evidence that a claim is true.
+- A source title or URL that merely looks plausible is NOT evidence.
+- Mark an answer "not grounded" if any material assertion or code detail is not supported by the context.
+- Mark an answer "not grounded" if the answer cites a document or section that is not present in the supplied context.
+- Do not use prior knowledge or outside knowledge to fill gaps.
+- If the evidence is incomplete or ambiguous, prefer "not grounded".
+- Explanations and code examples must be supported by the provided text."""
     ),
     (
         "human",
-        """Retrieved Context:
+        """Retrieved evidence (each item includes its authoritative title and section):
 {context}
 
-Generated Answer:
-{generation}"""
+Generated answer:
+{generation}
+
+Audit the complete answer, not just its citations."""
     )
 ])
 
+
+def _normalise(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
 def verify_citations_fast(generation: str, relevant_docs: list) -> bool:
     """
-    Fast-path citation groundedness check (0.1ms).
-    Verifies that the generated answer explicitly cites sources that were in the retrieved context.
+    Validate citation references against retrieved source metadata.
+
+    This checks citation integrity only; it deliberately does not claim to
+    prove factual groundedness. The separate LLM evidence auditor checks claims.
     """
-    if not relevant_docs:
-        return True
+    if not relevant_docs or not generation:
+        return False
 
-    gen_lower = generation.lower()
+    citations = re.findall(r"\[\s*source\s*:\s*([^\]]+)\]", generation, flags=re.IGNORECASE)
+    if not citations:
+        return False
 
-    # If the answer contains inline source citations
-    if "[source:" in gen_lower or "source:" in gen_lower:
-        # Check if at least one document title or section appears in the answer
-        for doc in relevant_docs:
-            title = doc.get("metadata", {}).get("title", "").lower()
-            if title and title[:15] in gen_lower:
-                return True
-        return True
+    known_sources = []
+    for doc in relevant_docs:
+        metadata = doc.get("metadata", {}) or {}
+        title = metadata.get("title") or metadata.get("filename") or ""
+        header_path = metadata.get("header_path") or ""
+        if title:
+            known_sources.append((_normalise(str(title)), _normalise(str(header_path))))
 
-    # If it's a disclaimer that context does not have information
-    if "does not contain" in gen_lower or "not enough information" in gen_lower:
-        return True
+    if not known_sources:
+        return False
 
-    return False
+    for citation in citations:
+        parts = [part.strip() for part in citation.split(">") if part.strip()]
+        if not parts:
+            return False
+        cited_title = _normalise(parts[0])
+        cited_section = _normalise(" ".join(parts[1:])) if len(parts) > 1 else ""
+
+        title_matches = [
+            (title, section)
+            for title, section in known_sources
+            if cited_title == title or (len(cited_title) >= 8 and cited_title in title)
+        ]
+        if not title_matches:
+            return False
+
+        if cited_section and not any(
+            section and (
+                cited_section == section
+                or cited_section in section
+                or section.endswith(cited_section)
+            )
+            for _, section in title_matches
+        ):
+            return False
+
+    return True
+
 
 def hallucination_check_node(state: GraphState) -> dict:
     """
-    Evaluates whether the generated answer is grounded in the retrieved documents (Self-RAG).
-    Uses fast-path citation validation to avoid an extra 4-5s LLM network call whenever possible.
+    Fails closed unless citations resolve to retrieved documents and an
+    independent structured evidence audit approves the answer.
     """
     generation = state.get("generation", "")
     relevant_docs = state.get("relevant_documents", [])
     steps = state.get("execution_steps", []).copy()
     steps.append("hallucination_check")
 
-    if not relevant_docs or not generation:
+    if not generation or not relevant_docs:
         return {
-            "hallucination_grade": "grounded",
+            "hallucination_grade": "not grounded",
+            "verification_reason": "No answer or supporting evidence was available for verification.",
             "execution_steps": steps,
         }
 
-    # Fast-path check: if citations are present and aligned with retrieved context
-    if verify_citations_fast(generation, relevant_docs):
-        print("[Hallucination Check] Fast-path passed: citations verified against retrieved context.")
+    if not verify_citations_fast(generation, relevant_docs):
         return {
-            "hallucination_grade": "grounded",
+            "hallucination_grade": "not grounded",
+            "verification_reason": "At least one citation is missing or does not match retrieved source metadata.",
             "execution_steps": steps,
         }
 
-    # Fallback to LLM groundedness check if fast-path is inconclusive
-    context_str = "\n\n".join([doc.get("content", "") for doc in relevant_docs])
+    context_items = []
+    for index, doc in enumerate(relevant_docs, start=1):
+        metadata = doc.get("metadata", {}) or {}
+        title = metadata.get("title") or metadata.get("filename") or "Untitled source"
+        section = metadata.get("header_path") or "Unspecified section"
+        source = metadata.get("source") or "unknown source"
+        content = doc.get("content", "")
+        context_items.append(
+            f"[Evidence {index}]\nTitle: {title}\nSection: {section}\nSource: {source}\n"
+            f"Content:\n{content}"
+        )
 
+    context = "\n\n".join(context_items)
     try:
+        from src.core.llm import get_llm
+
         llm = get_llm(temperature=0.0)
         structured_llm = llm.with_structured_output(HallucinationGrade)
         chain = HALLUCINATION_PROMPT | structured_llm
         result: HallucinationGrade = chain.invoke({
-            "context": context_str[:2500],
+            "context": context[:12000],
             "generation": generation,
         })
         grade = result.binary_score
-        print(f"[Hallucination Check] Evaluation: {grade} ({result.explanation})")
-    except Exception as e:
-        print(f"[Hallucination Check] Fallback due to: {e}")
-        grade = "grounded"
+        reason = result.explanation
+    except Exception as exc:
+        # An unavailable verifier must never turn an unverified answer into a
+        # trusted one. The graph will replace it with a safe abstention.
+        grade = "not grounded"
+        reason = f"Evidence verifier unavailable; answer was not approved ({type(exc).__name__})."
 
     return {
         "hallucination_grade": grade,
+        "verification_reason": reason,
         "execution_steps": steps,
     }
