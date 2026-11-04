@@ -142,7 +142,7 @@ def hallucination_check_node(state: GraphState) -> dict:
     try:
         from src.core.llm import get_llm
 
-        llm = get_llm(temperature=0.0)
+        llm = get_llm(temperature=0.0, with_failover=False)
         structured_llm = llm.with_structured_output(HallucinationGrade)
         chain = HALLUCINATION_PROMPT | structured_llm
         result: HallucinationGrade = chain.invoke({
