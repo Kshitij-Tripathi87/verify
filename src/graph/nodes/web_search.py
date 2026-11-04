@@ -52,8 +52,18 @@ def web_search_node(state: GraphState) -> dict:
 
     print(f"[Web Search Fallback Node] Retrieved {len(search_docs)} external chunks.")
 
-    return {
-        "relevant_documents": search_docs,
-        "web_search_needed": True,
+    # Search output is untrusted. Run it through the same document grader
+    # before allowing it into the generation context.
+    from src.graph.nodes.document_grader import document_grader_node
+
+    graded = document_grader_node({
+        **state,
+        "documents": search_docs,
         "execution_steps": steps,
+    })
+
+    return {
+        "relevant_documents": graded.get("relevant_documents", []),
+        "web_search_needed": True,
+        "execution_steps": graded.get("execution_steps", steps),
     }
