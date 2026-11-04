@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     PORT: int = 8000
     HOST: str = "127.0.0.1"
-    DEBUG: bool = False\n    CORS_ORIGINS: str = "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:3000,http://localhost:3000"
+    DEBUG: bool = False
+    CORS_ORIGINS: str = "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:3000,http://localhost:3000"
 
     # LLM Settings
     DEFAULT_LLM_PROVIDER: str = Field(default="gemini", description="LLM Provider: gemini, groq, openai, anthropic")
