@@ -137,6 +137,11 @@ class DocumentLoader:
         suffix = path.suffix.lower()
         if suffix in [".md", ".markdown", ".txt", ".html", ".htm"]:
             text = path.read_text(encoding="utf-8", errors="replace")
+            if suffix in {".html", ".htm"}:
+                soup = BeautifulSoup(text, "html.parser")
+                for element in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+                    element.decompose()
+                text = soup.get_text(separator="\n\n", strip=True)
             first_line = text.strip().split("\n")[0] if text else ""
             title = first_line.lstrip("#").strip() if first_line.startswith("#") else path.stem
             return Document(
