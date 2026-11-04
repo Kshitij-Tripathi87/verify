@@ -17,8 +17,6 @@ from src.storage.repository import storage_repo
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
-# In-memory query cache for instant (sub-10ms) responses
-_QUERY_CACHE = {}
 
 @router.post(
     "",
@@ -36,33 +34,6 @@ async def query_documentation(request: QueryRequest) -> QueryResponse:
 
     session_id = request.session_id or str(uuid.uuid4())
     start_time = time.perf_counter()
-    cache_key = request.question.strip().lower()
-
-    # Check in-memory query cache for instant response
-    if cache_key in _QUERY_CACHE:
-        cached = _QUERY_CACHE[cache_key]
-        latency = round((time.perf_counter() - start_time) * 1000, 2)
-        query_id = storage_repo.save_query(
-            question=request.question,
-            answer=cached.answer,
-            session_id=session_id,
-            query_type=cached.query_type,
-            retries=cached.retries_used,
-            sources=[s.model_dump() for s in cached.sources],
-            grounded=cached.grounded,
-        )
-        return QueryResponse(
-            query_id=query_id,
-            session_id=session_id,
-            answer=cached.answer,
-            query_type=cached.query_type,
-            sources=cached.sources,
-            retries_used=cached.retries_used,
-            grounded=cached.grounded,
-            execution_steps=cached.execution_steps,
-            execution_time_ms=latency,
-        )
-
     try:
         # Load previous conversation history for multi-turn session memory
         past_turns = storage_repo.get_session_queries(session_id, limit=6)
@@ -127,9 +98,6 @@ async def query_documentation(request: QueryRequest) -> QueryResponse:
             execution_steps=steps,
             execution_time_ms=execution_time_ms,
         )
-
-        # Cache for future identical/similar requests
-        _QUERY_CACHE[cache_key] = response
 
         return response
 
