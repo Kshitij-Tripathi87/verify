@@ -52,6 +52,17 @@ def test_workflow_controlled_execution(monkeypatch):
     monkeypatch.setattr("src.graph.workflow.document_grader_node", mock_document_grader)
     monkeypatch.setattr("src.graph.workflow.generator_node", mock_generator)
 
+    def mock_hallucination_check(state: GraphState):
+        steps = state.get("execution_steps", []).copy()
+        steps.append("hallucination_check")
+        return {
+            "hallucination_grade": "grounded",
+            "verification_reason": "Deterministic test verifier approved the fixture.",
+            "execution_steps": steps,
+        }
+
+    monkeypatch.setattr("src.graph.workflow.hallucination_check_node", mock_hallucination_check)
+
     app = create_rag_graph()
     initial_state: GraphState = {
         "question": "How to use yield in FastAPI?",
