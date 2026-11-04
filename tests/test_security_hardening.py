@@ -40,7 +40,9 @@ def test_upload_filename_never_uses_client_path():
 
 
 def test_upload_filename_rejects_empty_path():
-    from fastapi import HTTPException\n\n    with pytest.raises(HTTPException):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException):
         _safe_display_filename("../../")
 
 
