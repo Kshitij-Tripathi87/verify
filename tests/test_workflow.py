@@ -82,3 +82,22 @@ def test_workflow_controlled_execution(monkeypatch):
     assert "document_grader" in final_state["execution_steps"]
     assert "generator" in final_state["execution_steps"]
     assert "hallucination_check" in final_state["execution_steps"]
+
+
+def test_unverified_answer_is_routed_to_safe_abstention():
+    from src.graph.edges import route_after_hallucination_check
+    from src.graph.nodes.safe_abstention import safe_abstention_node
+
+    state: GraphState = {
+        "generation": "unverified draft",
+        "sources": [{"source": "fabricated"}],
+        "hallucination_grade": "not grounded",
+        "execution_steps": ["hallucination_check"],
+    }
+
+    assert route_after_hallucination_check(state) == "reject"
+    result = safe_abstention_node(state)
+    assert result["hallucination_grade"] == "not grounded"
+    assert result["sources"] == []
+    assert "safe_abstention" in result["execution_steps"]
+    assert "unverified draft" not in result["generation"]
