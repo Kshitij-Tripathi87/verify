@@ -7,7 +7,8 @@ from src.graph.nodes.query_rewriter import query_rewriter_node
 from src.graph.nodes.web_search import web_search_node
 from src.graph.nodes.generator import generator_node
 from src.graph.nodes.hallucination import hallucination_check_node
-from src.graph.edges import route_after_document_grading, route_after_hallucination_check\nfrom src.graph.nodes.safe_abstention import safe_abstention_node
+from src.graph.edges import route_after_document_grading, route_after_hallucination_check
+from src.graph.nodes.safe_abstention import safe_abstention_node
 
 def create_rag_graph():
     """
@@ -22,7 +23,8 @@ def create_rag_graph():
     workflow.add_node("query_rewriter", query_rewriter_node)
     workflow.add_node("web_search", web_search_node)
     workflow.add_node("generator", generator_node)
-    workflow.add_node("hallucination_check", hallucination_check_node)\n    workflow.add_node("safe_abstention", safe_abstention_node)
+    workflow.add_node("hallucination_check", hallucination_check_node)
+    workflow.add_node("safe_abstention", safe_abstention_node)
 
     # Add Direct Edges
     workflow.add_edge(START, "query_analysis")
@@ -48,7 +50,12 @@ def create_rag_graph():
 
     # Post-Generation Verification
     workflow.add_edge("generator", "hallucination_check")
-    workflow.add_conditional_edges(\n        "hallucination_check",\n        route_after_hallucination_check,\n        {"accept": END, "reject": "safe_abstention"},\n    )\n    workflow.add_edge("safe_abstention", END)
+    workflow.add_conditional_edges(
+        "hallucination_check",
+        route_after_hallucination_check,
+        {"accept": END, "reject": "safe_abstention"},
+    )
+    workflow.add_edge("safe_abstention", END)
 
     return workflow.compile()
 
