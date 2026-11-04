@@ -151,6 +151,7 @@ async def ingest_files(files: List[UploadFile] = File(...)) -> IngestResponse:
             storage_name = f"{uuid.uuid4().hex}{extension}"
             file_path = upload_dir / storage_name
             file_size = 0
+            stored_paths.append(file_path)
 
             with file_path.open("wb") as output:
                 while True:
@@ -174,7 +175,6 @@ async def ingest_files(files: List[UploadFile] = File(...)) -> IngestResponse:
             if file_size == 0:
                 raise HTTPException(status_code=400, detail=f"'{display_name}' is empty.")
 
-            stored_paths.append(file_path)
             doc = DocumentLoader.load_file(file_path)
             doc.metadata["source"] = f"upload:{storage_name}"
             doc.metadata["filename"] = display_name
