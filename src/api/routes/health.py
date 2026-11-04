@@ -15,7 +15,12 @@ router = APIRouter(tags=["Health"])
 async def health_check() -> HealthResponse:
     vector_count = vector_store_manager.count()
 
-    model = settings.GEMINI_MODEL if settings.DEFAULT_LLM_PROVIDER == "gemini" else settings.GROQ_MODEL
+    models = {
+        "gemini": settings.GEMINI_MODEL,
+        "groq": settings.GROQ_MODEL,
+        "openai": settings.OPENAI_MODEL,
+    }
+    model = models.get(settings.DEFAULT_LLM_PROVIDER.lower(), "unknown")
 
     return HealthResponse(
         status="healthy",
