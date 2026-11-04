@@ -6,7 +6,7 @@
 [![ChromaDB](https://img.shields.io/badge/VectorStore-ChromaDB-purple.svg)](https://www.trychroma.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An enterprise-grade, agentic Retrieval-Augmented Generation (RAG) assistant designed for software engineering documentation. Built on a cyclic **LangGraph `StateGraph`** implementing **Corrective RAG (CRAG)** and **Self-RAG** design patterns, served via a production **FastAPI** backend with SQLite persistence and an interactive modern web interface.
+A local-first, agentic Retrieval-Augmented Generation (RAG) assistant for software engineering documentation. Built on a **LangGraph StateGraph** implementing corrective retrieval, evidence review, and a fail-closed answer path, served via **FastAPI** with SQLite persistence and an interactive web interface.
 
 ---
 
@@ -48,9 +48,9 @@ flowchart TD
     
     NodeGen --> NodeHallucination[7. Groundedness / Self-RAG Check]
     NodeHallucination --> Router2{Answer Grounded?}
-    Router2 -->|Yes| End([Grounded Response with Citations])
-    Router2 -->|No & Retry < 2| NodeGen
-    Router2 -->|No & Retry >= 2| End
+    Router2 -->|Yes: evidence approved| End([Response with Citations])
+    Router2 -->|No or verifier unavailable| Abstain[Safe Abstention]
+    Abstain --> End
 ```
 
 ---
@@ -161,7 +161,6 @@ To ensure evaluators can run the assistant using any API key (or completely free
 - **Groq (Default & Recommended):** Runs `llama-3.3-70b-versatile` with ultra-fast inference (>250 tokens/sec) on a generous free tier.
 - **OpenAI:** `gpt-4o-mini` for high accuracy and cost efficiency.
 - **Google Gemini:** `gemini-1.5-flash` with 1M context window and free tier.
-- **Anthropic:** `claude-3-5-sonnet` for advanced reasoning.
 
 ### Local-First Embeddings:
 - **`sentence-transformers/all-MiniLM-L6-v2`** via FastEmbed / HuggingFace:
@@ -459,12 +458,12 @@ Set Google Gemini (default provider) with your API key:
 ```ini
 DEFAULT_LLM_PROVIDER="gemini"
 GEMINI_API_KEY="your-gemini-api-key"
-GEMINI_MODEL="gemini-3.5-flash-lite"
+GEMINI_MODEL="gemini-3.6-flash"
 ```
 
 ### Step 3: Run the Application Server
 ```bash
-python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 - **Modern Web Interface:** Open [http://localhost:8000/](http://localhost:8000/) in your browser.
@@ -473,3 +472,25 @@ python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+
+---
+
+## Demo Security and Operational Boundaries
+
+DocuGraph AI is configured for a **local, single-user demonstration**, not public internet deployment.
+
+### Safe demo defaults
+
+- The API binds to 127.0.0.1 by default. Keep it on loopback for the demo.
+- CORS is restricted to the local origins listed in .env.example; credentials are not enabled.
+- URL ingestion accepts only public HTTP(S) destinations on ports 80 and 443, rejects local/private/link-local IP destinations, validates redirect targets, and caps document downloads at 2 MiB.
+- File ingestion accepts Markdown, text, and HTML formats only. Client filenames are never used as disk paths. The limit is 5 MiB per file, 10 MiB per request, and 10 files per request.
+- Source-code download bundles exclude local ChromaDB data, uploaded documents, SQLite databases, and environment overrides.
+- Answer verification checks citation references against retrieved metadata and asks a structured evidence auditor to review material claims and code. If citation validation fails, the verifier is unavailable, or the audit rejects the answer, the workflow returns a safe abstention instead of presenting an unverified draft as grounded.
+- GET /health is a liveness check. GET /ready reports whether the vector index and provider credentials are configured; it does not prove that the provider is currently reachable.
+
+### Important limitation
+
+This demo does **not** include user authentication, tenant isolation, or authorization for session-history endpoints. Do not bind it to 0.0.0.0, expose it through a public tunnel, or deploy it to a shared network. A public deployment requires authentication, authorization, per-user data isolation, production egress controls, and an appropriately managed database before it is safe to use.
+
+See docs/DEMO_SECURITY.md for the demo threat model and release checklist.
