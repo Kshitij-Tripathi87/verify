@@ -19,7 +19,7 @@ Standard Naive RAG pipelines retrieve top-$k$ document chunks and immediately pr
 
 ### How Our Self-Corrective Workflow Solves This
 - **Query Analysis & Classification**: Analyzes intent (`how-to`, `conceptual`, `troubleshooting`, `api_reference`) and rewrites queries with domain-specific technical synonyms.
-- **Two-Tier Chunking**: Combines `MarkdownHeaderTextSplitter` (preserving hierarchical breadcrumbs) with `RecursiveCharacterTextSplitter` (preserving Python code blocks intact).
+- **Two-Tier Chunking**: Combines `MarkdownHeaderTextSplitter` (preserving hierarchical breadcrumbs) with `RecursiveCharacterTextSplitter` (prioritizing Markdown code-fence boundaries).
 - **Document Grading (CRAG)**: Evaluates candidate chunks with an LLM evaluator, filtering out irrelevant noise.
 - **Conditional Query Reformulation**: If documents fail relevance scoring, the system reformulates search terms and re-retrieves candidate chunks with a strict retry limit (`max_retries = 2`) to mathematically eliminate infinite execution loops.
 - **Web Search Fallback**: Automatically falls back to external web search (DuckDuckGo or Tavily) when documentation lacks coverage.
@@ -370,7 +370,7 @@ Retrieves historical query-response pairs, execution trails, and citations for a
   "status": "healthy",
   "app_name": "Technical Documentation RAG Assistant",
   "llm_provider": "gemini",
-  "model_name": "gemini-3.5-flash-lite",
+  "model_name": "gemini-3.6-flash",
   "embedding_provider": "fastembed",
   "vector_store_count": 27
 }
