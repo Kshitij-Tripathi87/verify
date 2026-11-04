@@ -1,7 +1,5 @@
 import ipaddress
-import os
 import socket
-import uuid
 from pathlib import Path
 from typing import List
 from urllib.parse import urljoin, urlsplit, urlunsplit
