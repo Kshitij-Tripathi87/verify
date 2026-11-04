@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DocuGraph AI | Self-Corrective Technical Documentation Assistant</title>
-  <meta name="description" content="Enterprise Self-Corrective RAG Documentation Assistant powered by LangGraph, ChromaDB, FastEmbed, and Google Gemini.">
+  <meta name="description" content="Local-first technical documentation assistant with corrective retrieval and evidence review, powered by LangGraph, ChromaDB, FastEmbed, and multi-provider LLM support.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -62,9 +62,9 @@
       <div class="header-right">
         <div class="telemetry-pill" id="telemetry-pill" title="Live System Health">
           <span class="live-dot" id="health-dot"></span>
-          <span class="model-badge" id="model-badge">Gemini 3.5 Flash Lite</span>
+          <span class="model-badge" id="model-badge">Loading model…</span>
           <span class="separator">•</span>
-          <span class="chunks-badge" id="vectors-badge">27 Chunks</span>
+          <span class="chunks-badge" id="vectors-badge">Loading index…</span>
         </div>
 
         <button id="download-header-btn" class="download-header-btn" onclick="openDownloadModal()" title="Download Application (EXE, MSI, ZIP, BAT)">
