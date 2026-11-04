@@ -44,6 +44,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_demo_security_headers(request, call_next):
+    """Add low-risk browser security headers to API and static responses."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
+
 # Include API Routers with /api/v1 prefix (standard versioned endpoints)
 app.include_router(query.router, prefix="/api/v1")
 app.include_router(ingest.router, prefix="/api/v1")
