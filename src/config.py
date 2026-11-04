@@ -10,15 +10,15 @@ class Settings(BaseSettings):
     APP_NAME: str = "Technical Documentation RAG Assistant"
     APP_ENV: str = "development"
     PORT: int = 8000
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     DEBUG: bool = False
+    CORS_ORIGINS: str = "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:3000,http://localhost:3000"
 
     # LLM Settings
-    DEFAULT_LLM_PROVIDER: str = Field(default="gemini", description="LLM Provider: gemini, groq, openai, anthropic")
+    DEFAULT_LLM_PROVIDER: str = Field(default="gemini", description="LLM Provider: gemini, groq, openai")
     GROQ_API_KEY: str = Field(default="")
     OPENAI_API_KEY: str = Field(default="")
     GEMINI_API_KEY: str = Field(default="")
-    ANTHROPIC_API_KEY: str = Field(default="")
 
     GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
     OPENAI_MODEL: str = Field(default="gpt-4o-mini")

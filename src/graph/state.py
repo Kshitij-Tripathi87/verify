@@ -23,4 +23,5 @@ class GraphState(TypedDict, total=False):
     max_retries: int                   # Maximum permitted rewrite retries
     web_search_needed: bool            # True if retrieval failed and web search should be used
     hallucination_grade: Optional[str] # "grounded" | "not grounded"
+    verification_reason: Optional[str]
     execution_steps: List[str]         # Audit trail of executed nodes for observability

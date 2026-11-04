@@ -14,8 +14,16 @@ class VectorStoreManager:
     def __init__(self, persist_directory: Optional[str] = None):
         self.persist_directory = persist_directory or settings.CHROMA_PERSIST_DIRECTORY
         os.makedirs(self.persist_directory, exist_ok=True)
-        self.embeddings = get_embeddings()
+        self._embeddings: Optional[Any] = None
         self._vector_store: Optional[Chroma] = None
+
+    @property
+    def embeddings(self):
+        # Defer model initialization until the vector store is first used.
+        # Importing API routes and running unit tests should not download a model.
+        if self._embeddings is None:
+            self._embeddings = get_embeddings()
+        return self._embeddings
 
     @property
     def vector_store(self) -> Chroma:

@@ -52,6 +52,17 @@ def test_workflow_controlled_execution(monkeypatch):
     monkeypatch.setattr("src.graph.workflow.document_grader_node", mock_document_grader)
     monkeypatch.setattr("src.graph.workflow.generator_node", mock_generator)
 
+    def mock_hallucination_check(state: GraphState):
+        steps = state.get("execution_steps", []).copy()
+        steps.append("hallucination_check")
+        return {
+            "hallucination_grade": "grounded",
+            "verification_reason": "Deterministic test verifier approved the fixture.",
+            "execution_steps": steps,
+        }
+
+    monkeypatch.setattr("src.graph.workflow.hallucination_check_node", mock_hallucination_check)
+
     app = create_rag_graph()
     initial_state: GraphState = {
         "question": "How to use yield in FastAPI?",
@@ -71,3 +82,22 @@ def test_workflow_controlled_execution(monkeypatch):
     assert "document_grader" in final_state["execution_steps"]
     assert "generator" in final_state["execution_steps"]
     assert "hallucination_check" in final_state["execution_steps"]
+
+
+def test_unverified_answer_is_routed_to_safe_abstention():
+    from src.graph.edges import route_after_hallucination_check
+    from src.graph.nodes.safe_abstention import safe_abstention_node
+
+    state: GraphState = {
+        "generation": "unverified draft",
+        "sources": [{"source": "fabricated"}],
+        "hallucination_grade": "not grounded",
+        "execution_steps": ["hallucination_check"],
+    }
+
+    assert route_after_hallucination_check(state) == "reject"
+    result = safe_abstention_node(state)
+    assert result["hallucination_grade"] == "not grounded"
+    assert result["sources"] == []
+    assert "safe_abstention" in result["execution_steps"]
+    assert "unverified draft" not in result["generation"]

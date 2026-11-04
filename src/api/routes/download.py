@@ -93,10 +93,10 @@ def build_project_source_archive(force: bool = False) -> Path:
     ignored_dirs = {
         ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
         "dist", "build", ".gemini", ".agents", "chroma_db_store",
-        ".idea", ".vscode"
+        "chroma_db", "uploaded", ".idea", ".vscode"
     }
     ignored_extensions = {".pyc", ".pyo", ".pyd", ".log", ".tmp"}
-    ignored_files = {".env"}  # Never package private environment variables
+    ignored_files = {".env", "app_storage.db", "app_storage.db-wal", "app_storage.db-shm"}
 
     with zipfile.ZipFile(SOURCE_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in ROOT_DIR.rglob("*"):
@@ -105,7 +105,13 @@ def build_project_source_archive(force: bool = False) -> Path:
             rel = path.relative_to(ROOT_DIR)
             if any(part in ignored_dirs for part in rel.parts):
                 continue
-            if path.name in ignored_files or path.suffix in ignored_extensions:
+            if path.name in ignored_files or path.suffix.lower() in ignored_extensions:
+                continue
+            # Keep secrets, environment overrides, local databases and user uploads
+            # out of the downloadable source bundle. Preserve the safe example file.
+            if path.name.startswith(".env") and path.name != ".env.example":
+                continue
+            if path.name.endswith((".db", ".db-wal", ".db-shm")):
                 continue
             zf.write(path, arcname=f"DocuGraphAI/{rel.as_posix()}")
 

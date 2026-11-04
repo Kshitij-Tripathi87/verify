@@ -22,3 +22,10 @@ def route_after_document_grading(state: GraphState) -> str:
 
     print(f"[Conditional Edge] Max retries reached ({retry_count}/{max_retries}) -> Routing to 'web_search'")
     return "web_search"
+
+
+def route_after_hallucination_check(state: GraphState) -> str:
+    """Only allow answers approved by the evidence auditor to reach the user."""
+    if state.get("hallucination_grade") == "grounded":
+        return "accept"
+    return "reject"

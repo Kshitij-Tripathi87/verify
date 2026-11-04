@@ -13,12 +13,11 @@ from src.api.schemas import (
     SessionListItem,
 )
 from src.graph.workflow import rag_app
+from src.graph.nodes.safe_abstention import ABSTENTION_MESSAGE
 from src.storage.repository import storage_repo
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
-# In-memory query cache for instant (sub-10ms) responses
-_QUERY_CACHE = {}
 
 @router.post(
     "",
@@ -36,33 +35,6 @@ async def query_documentation(request: QueryRequest) -> QueryResponse:
 
     session_id = request.session_id or str(uuid.uuid4())
     start_time = time.perf_counter()
-    cache_key = request.question.strip().lower()
-
-    # Check in-memory query cache for instant response
-    if cache_key in _QUERY_CACHE:
-        cached = _QUERY_CACHE[cache_key]
-        latency = round((time.perf_counter() - start_time) * 1000, 2)
-        query_id = storage_repo.save_query(
-            question=request.question,
-            answer=cached.answer,
-            session_id=session_id,
-            query_type=cached.query_type,
-            retries=cached.retries_used,
-            sources=[s.model_dump() for s in cached.sources],
-            grounded=cached.grounded,
-        )
-        return QueryResponse(
-            query_id=query_id,
-            session_id=session_id,
-            answer=cached.answer,
-            query_type=cached.query_type,
-            sources=cached.sources,
-            retries_used=cached.retries_used,
-            grounded=cached.grounded,
-            execution_steps=cached.execution_steps,
-            execution_time_ms=latency,
-        )
-
     try:
         # Load previous conversation history for multi-turn session memory
         past_turns = storage_repo.get_session_queries(session_id, limit=6)
@@ -128,62 +100,39 @@ async def query_documentation(request: QueryRequest) -> QueryResponse:
             execution_time_ms=execution_time_ms,
         )
 
-        # Cache for future identical/similar requests
-        _QUERY_CACHE[cache_key] = response
-
         return response
 
 
-    except Exception as e:
-        print(f"[Query API] Exception during graph execution ({e}). Activating high-availability extractive fallback.")
+    except Exception as exc:
+        # A graph or verifier failure must not convert an unverified draft into
+        # a trusted extractive answer. Fail closed and keep the response useful.
+        print(f"[Query API] Verified workflow failed ({type(exc).__name__}); returning safe abstention.")
         try:
-            from src.core.vector_store import vector_store_manager
-            from src.core.fallback import synthesize_extractive_answer
-            fallback_docs = vector_store_manager.similarity_search(query=request.question, k=3)
-            formatted_fallback_docs = [
-                {"content": d.page_content, "metadata": d.metadata}
-                for d in fallback_docs
-            ]
-            fallback_answer = synthesize_extractive_answer(
-                request.question,
-                formatted_fallback_docs,
-                error_reason=str(e),
-            )
-            fallback_citations = [
-                SourceCitation(
-                    source=d.metadata.get("source", "corpus"),
-                    title=d.metadata.get("title", "Technical Document"),
-                    header_path=d.metadata.get("header_path", "General"),
-                    snippet=d.page_content[:200] + "...",
-                )
-                for d in fallback_docs
-            ]
             query_id = storage_repo.save_query(
                 question=request.question,
-                answer=fallback_answer,
+                answer=ABSTENTION_MESSAGE,
                 session_id=session_id,
                 query_type="conceptual",
                 retries=0,
-                sources=[c.model_dump() for c in fallback_citations],
-                grounded="grounded",
+                sources=[],
+                grounded="not grounded",
             )
             return QueryResponse(
                 query_id=query_id,
                 session_id=session_id,
-                answer=fallback_answer,
+                answer=ABSTENTION_MESSAGE,
                 query_type="conceptual",
-                sources=fallback_citations,
+                sources=[],
                 retries_used=0,
-                grounded="grounded",
-                execution_steps=["retriever", "extractive_synthesizer_fallback"],
+                grounded="not grounded",
+                execution_steps=["safe_abstention", "api_error_fallback"],
                 execution_time_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
-        except Exception as inner_e:
+        except Exception as storage_exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error executing documentation assistant: {str(e)} (Fallback error: {str(inner_e)})"
-            )
-
+                detail="The assistant could not complete a verified response. Check the local application log.",
+            ) from storage_exc
 
 @router.get(
     "/history",

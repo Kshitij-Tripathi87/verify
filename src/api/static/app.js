@@ -132,13 +132,25 @@ async function loadRecentSessions() {
 
     listEl.innerHTML = data.sessions.map((s) => {
       const isActive = s.session_id === currentSessionId;
+      const encodedSessionId = encodeURIComponent(String(s.session_id)).replace(/'/g, "%27");
       return `
-        <div class="session-item ${isActive ? 'active' : ''}" onclick="selectSession('${s.session_id}')" title="${escapeHtml(s.question)}">
+        <button type="button" class="session-item ${isActive ? 'active' : ''}" data-session-id="${escapeHtml(encodedSessionId)}" title="${escapeHtml(s.question)}">
           <span class="session-title-text">${escapeHtml(s.question || 'Conversation')}</span>
-          <span class="session-turns-pill">${s.turn_count}</span>
-        </div>
+          <span class="session-turns-pill">${Number(s.turn_count) || 0}</span>
+        </button>
       `;
     }).join("");
+
+    // Keep untrusted session identifiers out of inline JavaScript handlers.
+    listEl.querySelectorAll("[data-session-id]").forEach((item) => {
+      item.addEventListener("click", () => {
+        try {
+          selectSession(decodeURIComponent(item.dataset.sessionId || ""));
+        } catch (err) {
+          console.error("Invalid session identifier in session list", err);
+        }
+      });
+    });
   } catch (err) {
     console.error("Failed to load sessions", err);
   }
@@ -713,15 +725,24 @@ async function handleUrlIngest() {
 function renderMarkdownWithCode(rawText) {
   if (!rawText) return "";
 
-  // Extract fenced code blocks with language and copy button
-  let formatted = rawText.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const language = lang.trim() || "code";
-    const cleanCode = code.trim();
-    return `
+  // Render fenced code separately. All user/model-provided text is escaped
+  // before adding the small, fixed set of presentation tags below.
+  const source = String(rawText);
+  const codePattern = /```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g;
+  let cursor = 0;
+  let output = "";
+  let match;
+
+  while ((match = codePattern.exec(source)) !== null) {
+    output += renderSafeMarkdownText(source.slice(cursor, match.index));
+
+    const language = match[1].trim() || "code";
+    const cleanCode = match[2].trim();
+    output += `
       <div class="code-block-wrapper">
         <div class="code-header">
           <span>${escapeHtml(language)}</span>
-          <button class="copy-code-btn" onclick="copySnippet(this)">
+          <button type="button" class="copy-code-btn" onclick="copySnippet(this)">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             <span>Copy</span>
           </button>
@@ -729,23 +750,28 @@ function renderMarkdownWithCode(rawText) {
         <pre><code class="language-${escapeHtml(language)}">${escapeHtml(cleanCode)}</code></pre>
       </div>
     `;
-  });
+    cursor = codePattern.lastIndex;
+  }
 
-  // Inline formatting
-  formatted = formatted
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/^#### (.*$)/gim, '<h4>$1</h4>')
-    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    .replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/gims, '<ul>$1</ul>')
-    .replace(/\n\n/g, '<p></p>')
-    .replace(/\n/g, '<br/>');
+  output += renderSafeMarkdownText(source.slice(cursor));
+  return output;
+}
 
-  return formatted;
+function renderSafeMarkdownText(rawText) {
+  // Escape raw HTML first. Formatting rules only introduce trusted tags;
+  // retrieved documents and model output can never contribute executable HTML.
+  return escapeHtml(rawText)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/^#### (.*$)/gim, "<h4>$1</h4>")
+    .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+    .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+    .replace(/^# (.*$)/gim, "<h1>$1</h1>")
+    .replace(/^\s*[-*]\s+(.*$)/gim, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>)/gims, "<ul>$1</ul>")
+    .replace(/\n\n/g, "<p></p>")
+    .replace(/\n/g, "<br/>");
 }
 
 function copySnippet(btn) {
