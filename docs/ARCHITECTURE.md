@@ -38,13 +38,12 @@ flowchart TD
         
         NodeGen --> NodeHallucination[7. Groundedness / Hallucination Check]
         NodeHallucination --> Router2{Answer Grounded?}
-        Router2 -->|Yes| Output[Synthesized Answer with Citations]
-        Router2 -->|No & Retry < 2| NodeGen
-        Router2 -->|No & Final| FallbackOutput[Cautious Answer with Caveat]
+        Router2 -->|Yes: verified| Output[Answer with Citations]
+        Router2 -->|No or verifier unavailable| SafeAbstain[Safe Abstention]
     end
     
     Output --> API
-    FallbackOutput --> API
+    SafeAbstain --> API
     API -->|Store Feedback| SQLite[(SQLite Database)]
 ```
 
@@ -204,3 +203,13 @@ class FeedbackRequest(BaseModel):
   - `queries`: `(id, session_id, question, answer, query_type, retries, created_at)`
   - `feedback`: `(id, query_id, rating, comment, created_at)`
   - `documents`: `(id, source_name, source_type, total_chunks, created_at)`
+
+## 6. Demo Trust and Security Boundaries
+
+The demo uses a fail-closed answer policy. Citation references must resolve to retrieved source metadata, and a structured evidence auditor must approve the answer's material claims and code. Failed or unavailable verification routes to a safe abstention; it never upgrades an unverified answer to a grounded response.
+
+External URL ingestion validates public HTTP(S) destinations and each redirect target, restricts ports, bounds response size, and rejects non-text content. Deployment must still enforce outbound network egress controls because DNS can change between validation and connection.
+
+Uploaded files are restricted by extension and size, stored under generated server-side names, and kept separate from client-supplied paths. Downloadable source archives exclude local vector data, uploaded documents, databases, and environment overrides.
+
+The demo binds to loopback and has no authentication or tenant isolation. These controls make it appropriate for a local demonstration only; they are not a substitute for a production identity and authorization model.
